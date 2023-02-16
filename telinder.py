@@ -28,6 +28,7 @@ dp = Dispatcher(bot, storage=storage)
 # Состояния
 class Form(StatesGroup):
     name = State()  # Будет представлен в хранилище как «Форма: имя».
+    user_photo = State()  # Будет представлен в хранилище как «Форма: фото».
     age = State()  # Будет представлен в хранилище как «Форма: возраст».
     gender = State()  # Будет представлен в хранилище как «Форма: пол».
 
@@ -45,7 +46,7 @@ async def cmd_start(message: types.Message):
 
 # Вы можете использовать состояние '*', если вам нужно обрабатывать все состояния
 @dp.message_handler(state='*', commands='cancel')
-@dp.message_handler(Text(equals='cancel', ignore_case=False), state='*')
+@dp.message_handler(Text(equals='cancel', ignore_case=True), state='*')
 async def cancel_handler(message: types.Message, state: FSMContext):
     """
     Разрешить пользователю отменять любое действие
@@ -68,6 +69,26 @@ async def process_name(message: types.Message, state: FSMContext):
     """
     async with state.proxy() as data:
         data['name'] = message.text
+
+    await Form.next()
+    await message.reply("Добавьте свое фото")
+
+
+@dp.message_handler(lambda message: not message.photo, state=Form.user_photo)
+async def process_photo_invalid(message: types.Message):
+    """
+    Если пользователь не загружает фото
+    """
+    return await message.reply("Фотография не найдена в сообщении =(\nЗагрузи свою фотку")
+
+
+@dp.message_handler(content_types=['photo'], state=Form.user_photo)
+async def process_photo(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        document_id = message.photo[-1].file_id
+        file_info = await bot.get_file(document_id)
+        path = f'http://api.telegram.org/file/bot{API_TOKEN}/{file_info.file_path}'
+        data['user_photo'] = path
 
     await Form.next()
     await message.reply("Сколько тебе лет?")
