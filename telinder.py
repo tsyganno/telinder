@@ -1,9 +1,7 @@
 from os import getenv
 from dotenv import load_dotenv
-load_dotenv()
-
 import logging
-
+import time
 import aiogram.utils.markdown as md
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
@@ -12,6 +10,9 @@ from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.types import ParseMode
 from aiogram.utils import executor
+from db import Sql_lite
+
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 
@@ -21,6 +22,9 @@ bot = Bot(token=API_TOKEN)
 
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
+
+db = Sql_lite()
+counter = 0
 
 
 class Form(StatesGroup):
@@ -97,8 +101,22 @@ async def process_gender_invalid(message: types.Message):
 @dp.message_handler(state=Form.gender)
 async def process_gender(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
+        global counter
         data['gender'] = message.text
         markup = types.ReplyKeyboardRemove()
+        counter += 1
+        db.write_to_the_database(
+            id=counter,
+            name_in_chat=data['name'],
+            id_user=message.from_user.id,
+            first_name=message.from_user.first_name,
+            last_name=message.from_user.last_name,
+            username=message.from_user.username,
+            date=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+            age=data['age'],
+            gender=data['gender'],
+            photo=data['user_photo']
+        )
         await bot.send_message(
             message.chat.id,
             md.text(
