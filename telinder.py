@@ -105,18 +105,31 @@ async def process_gender(message: types.Message, state: FSMContext):
         data['gender'] = message.text
         markup = types.ReplyKeyboardRemove()
         counter += 1
-        db.write_to_the_database(
-            id=counter,
-            name_in_chat=data['name'],
-            id_user=message.from_user.id,
-            first_name=message.from_user.first_name,
-            last_name=message.from_user.last_name,
-            username=message.from_user.username,
-            date=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
-            age=data['age'],
-            gender=data['gender'],
-            photo=data['user_photo']
-        )
+        if db.finding_a_duplicate_entry_in_the_database(message.from_user.id) is True:
+            db.update_record_in_the_database(
+                name_in_chat=data['name'],
+                id_user=message.from_user.id,
+                first_name=message.from_user.first_name,
+                last_name=message.from_user.last_name,
+                username=message.from_user.username,
+                date=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+                age=data['age'],
+                gender=data['gender'],
+                photo=data['user_photo']
+            )
+        else:
+            db.write_to_the_database(
+                id=counter,
+                name_in_chat=data['name'],
+                id_user=message.from_user.id,
+                first_name=message.from_user.first_name,
+                last_name=message.from_user.last_name,
+                username=message.from_user.username,
+                date=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+                age=data['age'],
+                gender=data['gender'],
+                photo=data['user_photo']
+            )
         await bot.send_message(
             message.chat.id,
             md.text(

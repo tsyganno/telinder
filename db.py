@@ -26,16 +26,27 @@ class Sql_lite:
         )
         self.conn.commit()
 
-    def finding_a_duplicate_entry_in_the_database(self, text: str) -> bool:
+    def finding_a_duplicate_entry_in_the_database(self, user_id: int) -> bool:
         """Поиск повторяющейся записи в БД"""
         try:
-            sql_select_query = """SELECT * FROM data WHERE text = ?"""
-            self.cursor.execute(sql_select_query, (text,))
+            sql_select_query = """SELECT * FROM data WHERE id_user = ?"""
+            self.cursor.execute(sql_select_query, (user_id,))
             records = self.cursor.fetchall()
             if len(records) > 0:
                 return True
             else:
                 return False
+        except sqlite3.Error as error:
+            print("Ошибка при работе с SQLite", error)
+
+    def update_record_in_the_database(self, name_in_chat: str, id_user: int, first_name: str, last_name: str, username: str, date: str, age: int, gender: str, photo: str):
+        """Обновление записи пользователя UPDATE books SET price = ? WHERE id = ?"""
+        try:
+            group = (name_in_chat, first_name, last_name, username, date, age, gender, photo, id_user)
+            sql_select_query = "UPDATE data SET name_in_chat = ?, first_name = ?, last_name = ?, username = ?, date = ?, age = ?, gender = ?, photo = ? WHERE id_user = ?"
+            self.cursor.execute(sql_select_query, group)
+            self.conn.commit()
+
         except sqlite3.Error as error:
             print("Ошибка при работе с SQLite", error)
 
