@@ -10,6 +10,8 @@ from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.types import ParseMode
 from aiogram.utils import executor
+from aiogram.utils.markdown import hide_link
+from aiogram.types import LoginUrl
 from db import Sql_lite
 
 load_dotenv()
@@ -32,6 +34,13 @@ class Form(StatesGroup):
     user_photo = State()
     age = State()
     gender = State()
+    intercourse = State()
+
+
+def keyboard_submit_edit():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
+    markup.add("/Сброс")
+    return markup
 
 
 @dp.message_handler(commands='start')
@@ -41,7 +50,7 @@ async def cmd_start(message: types.Message):
     await message.reply("Всем привет! Как тебя зовут?")
 
 
-@dp.message_handler(state='*', commands=['no'])
+@dp.message_handler(state='*', commands=['Сброс'])
 async def process_name(message: types.Message, state: FSMContext):
     """ Возврат в исходное состояние, в точку входа в разговор """
     await Form.name.set()
@@ -54,7 +63,7 @@ async def process_name(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['name'] = message.text
     await Form.next()
-    await message.reply("Добавьте свое фото")
+    await message.reply("Добавьте свое фото", reply_markup=keyboard_submit_edit())
 
 
 @dp.message_handler(lambda message: not message.photo, state=Form.user_photo)
@@ -70,9 +79,10 @@ async def process_photo(message: types.Message, state: FSMContext):
         document_id = message.photo[-1].file_id
         file_info = await bot.get_file(document_id)
         path = f'http://api.telegram.org/file/bot{API_TOKEN}/{file_info.file_path}'
-        data['user_photo'] = path
+        data['user_photo'] = [path, document_id]
     await Form.next()
-    await message.reply("Сколько тебе лет?")
+    # await bot.send_photo(chat_id=message.chat.id, photo=message.photo[-1].file_id)
+    await message.reply("Сколько тебе лет?", reply_markup=keyboard_submit_edit())
 
 
 @dp.message_handler(lambda message: not message.text.isdigit(), state=Form.age)
@@ -88,7 +98,7 @@ async def process_age(message: types.Message, state: FSMContext):
     await state.update_data(age=int(message.text))
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
     markup.add("Мужчина", "Женщина")
-    markup.add("Другие")
+    markup.add('/Сброс')
     await message.reply("Какого Вы пола?", reply_markup=markup)
 
 
@@ -103,7 +113,9 @@ async def process_gender(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         global counter
         data['gender'] = message.text
-        markup = types.ReplyKeyboardRemove()
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
+        markup.add("Начнем искать пару? Нажимай скорее =)")
+        markup.add("/Сброс")
         counter += 1
         if db.finding_a_duplicate_entry_in_the_database(message.from_user.id) is True:
             db.update_record_in_the_database(
@@ -115,7 +127,8 @@ async def process_gender(message: types.Message, state: FSMContext):
                 date=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
                 age=data['age'],
                 gender=data['gender'],
-                photo=data['user_photo']
+                photo=data['user_photo'][0],
+                photo_for_chat=data['user_photo'][1],
             )
         else:
             db.write_to_the_database(
@@ -128,7 +141,8 @@ async def process_gender(message: types.Message, state: FSMContext):
                 date=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
                 age=data['age'],
                 gender=data['gender'],
-                photo=data['user_photo']
+                photo=data['user_photo'][0],
+                photo_for_chat=data['user_photo'][1],
             )
         await bot.send_message(
             message.chat.id,
@@ -141,8 +155,50 @@ async def process_gender(message: types.Message, state: FSMContext):
             reply_markup=markup,
             parse_mode=ParseMode.MARKDOWN,
         )
-    await state.finish()
+    await Form.next()
 
+
+@dp.message_handler(state=Form.intercourse)
+async def process_age(message: types.Message, state: FSMContext):
+    """ Выбор партнера """
+    async with state.proxy() as data:
+        # markup = types.ReplyKeyboardRemove()
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
+        markup.add("Начнем искать пару?")
+        markup.add("/Сброс")
+        try:
+            array_partners = db.search_for_a_potential_partner(data['gender'])
+            for el in array_partners:
+                if el[5] is None:
+                    await bot.send_message(
+                        message.chat.id,
+                        md.text(
+                            md.text(f'Зовут: {str(el[1])}'),
+                            md.text(f'Возраст: {str(el[7])}'),
+                            md.text(f'Username для поиска в Telegram: не существует'),
+                            sep='\n',
+                        ),
+                        reply_markup=markup,
+                        parse_mode=ParseMode.MARKDOWN,
+                    )
+                    await bot.send_photo(chat_id=message.chat.id, photo=el[10])
+                else:
+                    await bot.send_message(
+                        message.chat.id,
+                        md.text(
+                            md.text(f'Зовут: {str(el[1])}'),
+                            md.text(f'Возраст: {str(el[7])}'),
+                            md.text(f'Username для поиска в Telegram: {el[5]}'),
+                            sep='\n',
+                        ),
+                        reply_markup=markup,
+                        parse_mode=ParseMode.MARKDOWN,
+                    )
+                    await bot.send_photo(chat_id=message.chat.id, photo=el[10])
+        except IndexError:
+            pass
+
+    # await state.finish()
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
