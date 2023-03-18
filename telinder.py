@@ -1,4 +1,5 @@
 from os import getenv
+from random import choice
 from dotenv import load_dotenv
 import logging
 import time
@@ -6,13 +7,11 @@ import aiogram.utils.markdown as md
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.types import ParseMode
 from aiogram.utils import executor
-from aiogram.utils.markdown import hide_link
-from aiogram.types import LoginUrl
 from db import Sql_lite
+from stack import Partner
 
 load_dotenv()
 
@@ -26,6 +25,7 @@ storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
 db = Sql_lite()
+arr = Partner()
 counter = 0
 
 
@@ -147,9 +147,11 @@ async def process_gender(message: types.Message, state: FSMContext):
         await bot.send_message(
             message.chat.id,
             md.text(
-                md.text('Привет! Рад встрече,', md.bold(data['name'])),
+                md.text('Ваше имя', md.bold(data['name'])),
                 md.text('Возраст:', md.code(data['age'])),
                 md.text('Пол:', data['gender']),
+                md.text('Профиль заполнен. Теперь можно найти себе пару =)'),
+                md.text('Для изменения профиля нажмите /Сброс.'),
                 sep='\n',
             ),
             reply_markup=markup,
@@ -168,34 +170,43 @@ async def process_age(message: types.Message, state: FSMContext):
         markup.add("/Сброс")
         try:
             array_partners = db.search_for_a_potential_partner(data['gender'])
-            for el in array_partners:
-                if el[5] is None:
-                    await bot.send_message(
-                        message.chat.id,
-                        md.text(
-                            md.text(f'Зовут: {str(el[1])}'),
-                            md.text(f'Возраст: {str(el[7])}'),
-                            md.text(f'Username для поиска в Telegram: не существует'),
-                            sep='\n',
-                        ),
-                        reply_markup=markup,
-                        parse_mode=ParseMode.MARKDOWN,
-                    )
-                    await bot.send_photo(chat_id=message.chat.id, photo=el[10])
+            while True:
+                partner = choice(array_partners)
+                if partner not in arr.array:
+                    if partner[5] is None:
+                        await bot.send_message(
+                            message.chat.id,
+                            md.text(
+                                md.text(f'Зовут: {str(partner[1])}'),
+                                md.text(f'Возраст: {str(partner[7])}'),
+                                md.text(f'Username для поиска в Telegram: не существует'),
+                                sep='\n',
+                            ),
+                            reply_markup=markup,
+                            parse_mode=ParseMode.MARKDOWN,
+                        )
+                        await bot.send_photo(chat_id=message.chat.id, photo=partner[10])
+                        arr.array.add_partner_in_array(partner)
+                        break
+                    else:
+                        await bot.send_message(
+                            message.chat.id,
+                            md.text(
+                                md.text(f'Зовут: {str(partner[1])}'),
+                                md.text(f'Возраст: {str(partner[7])}'),
+                                md.text(f'Username для поиска в Telegram: {partner[5]}'),
+                                sep='\n',
+                            ),
+                            reply_markup=markup,
+                            parse_mode=ParseMode.MARKDOWN,
+                        )
+                        await bot.send_photo(chat_id=message.chat.id, photo=partner[10])
+                        arr.array.add_partner_in_array(partner)
+                        break
                 else:
-                    await bot.send_message(
-                        message.chat.id,
-                        md.text(
-                            md.text(f'Зовут: {str(el[1])}'),
-                            md.text(f'Возраст: {str(el[7])}'),
-                            md.text(f'Username для поиска в Telegram: {el[5]}'),
-                            sep='\n',
-                        ),
-                        reply_markup=markup,
-                        parse_mode=ParseMode.MARKDOWN,
-                    )
-                    await bot.send_photo(chat_id=message.chat.id, photo=el[10])
-        except IndexError:
+                    await message.reply("Пары закончились. Обновите профиль (/Сброс) и начните искать по новому =)", reply_markup=markup)
+                    break
+        except:
             pass
 
     # await state.finish()
