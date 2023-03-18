@@ -1,6 +1,9 @@
 from os import getenv
 from random import choice
 from dotenv import load_dotenv
+
+from multicolorcaptcha import CaptchaGenerator
+
 import logging
 import time
 import aiogram.utils.markdown as md
@@ -10,8 +13,10 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.types import ParseMode
 from aiogram.utils import executor
+from aiogram.types.input_file import InputFile
+
 from db import Sql_lite
-from stack import Partner
+from stack import Partner, StackCaptcha
 
 load_dotenv()
 
@@ -26,10 +31,12 @@ dp = Dispatcher(bot, storage=storage)
 
 db = Sql_lite()
 arr = Partner()
+arr_cap = StackCaptcha()
 counter = 0
 
 
 class Form(StatesGroup):
+    captcha = State()
     name = State()
     user_photo = State()
     age = State()
@@ -38,23 +45,90 @@ class Form(StatesGroup):
 
 
 def keyboard_submit_edit():
+    """ Создание кнопки Сброса """
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
     markup.add("/Сброс")
     return markup
 
 
+def generate_captcha():
+    """ Создание капчи """
+    CAPCTHA_SIZE_NUM = 2
+    generator = CaptchaGenerator(CAPCTHA_SIZE_NUM)
+    captcha = generator.gen_captcha_image(difficult_level=3)
+    math_captcha = generator.gen_math_captcha_image(difficult_level=2)
+    image = captcha.image
+    math_image = math_captcha.image
+    math_equation_string = math_captcha.equation_str
+    math_equation_result = math_captcha.equation_result
+    image.save("captcha_image.png", "png")
+    math_image.save("captcha_image.png", "png")
+    return math_equation_string, math_equation_result
+
+
+def examination_captcha(user_captcha, captcha_string, captcha_math):
+    """ Проверка капчи """
+    try:
+        sign = ''
+        for el in user_captcha:
+            if not el.isdigit():
+                sign += el
+        left_part, right_part = user_captcha.split(sign)
+        dict_sign = {'-': int(left_part) - int(right_part), '+': int(left_part) + int(right_part), '*': int(left_part) + int(right_part), '/': int(left_part) + int(right_part)}
+        digit = dict_sign[sign]
+        return user_captcha == captcha_string and str(digit) == captcha_math
+    except ValueError:
+        return False
+
+
+def restart_captcha():
+    """ Создание новой капчи """
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
+    markup.add("/Загрузить_новую_капчу?")
+    return markup
+
+
 @dp.message_handler(commands='start')
 async def cmd_start(message: types.Message):
-    """ Точка входа в разговор """
-    await Form.name.set()
-    await message.reply("Всем привет! Как тебя зовут?")
+    """ Прохождение капчи """
+    captcha_string, captcha_math = generate_captcha()
+    arr_cap.array_captcha.append(captcha_string)
+    arr_cap.array_captcha.append(captcha_math)
+    path_captcha = InputFile('captcha_image.png')
+    await Form.captcha.set()
+    await message.reply("Привет! Чтобы использовать этот бот, тебе необходимо пройти испытание капчей =)\nПроходя это испытание, ты подтверждаешь, что тебе уже есть 18 лет.\nОтправь мне цифры изображенные на картинке =)")
+    await bot.send_photo(chat_id=message.chat.id, photo=path_captcha)
+
+
+@dp.message_handler(state='*', commands=['Загрузить_новую_капчу?'])
+async def process_name(message: types.Message):
+    """ Создание новой капчи """
+    captcha_string, captcha_math = generate_captcha()
+    arr_cap.array_captcha.append(captcha_string)
+    arr_cap.array_captcha.append(captcha_math)
+    path_captcha = InputFile('captcha_image.png')
+    await Form.captcha.set()
+    await message.reply("Отправь мне цифры и символы, в той же последовательности, которые изображены на картинке =)")
+    await bot.send_photo(chat_id=message.chat.id, photo=path_captcha)
+
+
+@dp.message_handler(state=Form.captcha)
+async def process_name(message: types.Message):
+    """ Прохождение капчи """
+    user_captcha = message.text
+    if examination_captcha(user_captcha, arr_cap.array_captcha[0], arr_cap.array_captcha[1]) is True:
+        await Form.next()
+        await message.reply("Как тебя зовут?")
+    else:
+        arr_cap.array_captcha = []
+        await message.reply("Что-то пошло не так...\nПоробуйте снова или загрузите новую капчу.", reply_markup=restart_captcha())
 
 
 @dp.message_handler(state='*', commands=['Сброс'])
-async def process_name(message: types.Message, state: FSMContext):
+async def process_name(message: types.Message):
     """ Возврат в исходное состояние, в точку входа в разговор """
     await Form.name.set()
-    await message.reply("Всем привет! Как тебя зовут?")
+    await message.reply("Как тебя зовут?")
 
 
 @dp.message_handler(state=Form.name)
@@ -95,11 +169,16 @@ async def process_age_invalid(message: types.Message):
 async def process_age(message: types.Message, state: FSMContext):
     """ Выбор взраста пользователем """
     await Form.next()
-    await state.update_data(age=int(message.text))
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-    markup.add("Мужчина", "Женщина")
-    markup.add('/Сброс')
-    await message.reply("Какого Вы пола?", reply_markup=markup)
+    if int(message.text) < 18:
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
+        markup.add('/Сброс')
+        await message.reply("Вам должно быть больше 18 лет!\nУдалите бот, если вам меньше 18 лет, в противном случае нажмите 'Сброс'", reply_markup=markup)
+    else:
+        await state.update_data(age=int(message.text))
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
+        markup.add("Мужчина", "Женщина")
+        markup.add('/Сброс')
+        await message.reply("Какого Вы пола?", reply_markup=markup)
 
 
 @dp.message_handler(lambda message: message.text not in ["Мужчина", "Женщина"], state=Form.gender)
@@ -186,7 +265,7 @@ async def process_age(message: types.Message, state: FSMContext):
                             parse_mode=ParseMode.MARKDOWN,
                         )
                         await bot.send_photo(chat_id=message.chat.id, photo=partner[10])
-                        arr.array.add_partner_in_array(partner)
+                        arr.array.append(partner)
                         break
                     else:
                         await bot.send_message(
@@ -201,7 +280,7 @@ async def process_age(message: types.Message, state: FSMContext):
                             parse_mode=ParseMode.MARKDOWN,
                         )
                         await bot.send_photo(chat_id=message.chat.id, photo=partner[10])
-                        arr.array.add_partner_in_array(partner)
+                        arr.array.append(partner)
                         break
                 else:
                     await message.reply("Пары закончились. Обновите профиль (/Сброс) и начните искать по новому =)", reply_markup=markup)
