@@ -60,4 +60,3 @@ class Sql_lite:
             return records
         except sqlite3.Error as error:
             print("Ошибка при работе с SQLite (partner)", error)
-

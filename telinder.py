@@ -2,21 +2,21 @@ from os import getenv
 from random import choice
 from dotenv import load_dotenv
 
-from multicolorcaptcha import CaptchaGenerator
-
 import logging
 import time
 import aiogram.utils.markdown as md
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters.state import State, StatesGroup
+
 from aiogram.types import ParseMode
 from aiogram.utils import executor
 from aiogram.types.input_file import InputFile
 
 from db import Sql_lite
 from stack import Partner, StackCaptcha
+from state_machine import Form
+from functions import keyboard_submit_edit, generate_captcha, examination_captcha, restart_captcha
 
 load_dotenv()
 
@@ -33,59 +33,6 @@ db = Sql_lite()
 arr = Partner()
 arr_cap = StackCaptcha()
 counter = 0
-
-
-class Form(StatesGroup):
-    captcha = State()
-    name = State()
-    user_photo = State()
-    age = State()
-    gender = State()
-    intercourse = State()
-
-
-def keyboard_submit_edit():
-    """ Создание кнопки Сброса """
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-    markup.add("/Сброс")
-    return markup
-
-
-def generate_captcha():
-    """ Создание капчи """
-    CAPCTHA_SIZE_NUM = 2
-    generator = CaptchaGenerator(CAPCTHA_SIZE_NUM)
-    captcha = generator.gen_captcha_image(difficult_level=3)
-    math_captcha = generator.gen_math_captcha_image(difficult_level=2)
-    image = captcha.image
-    math_image = math_captcha.image
-    math_equation_string = math_captcha.equation_str
-    math_equation_result = math_captcha.equation_result
-    image.save("captcha_image.png", "png")
-    math_image.save("captcha_image.png", "png")
-    return math_equation_string, math_equation_result
-
-
-def examination_captcha(user_captcha, captcha_string, captcha_math):
-    """ Проверка капчи """
-    try:
-        sign = ''
-        for el in user_captcha:
-            if not el.isdigit():
-                sign += el
-        left_part, right_part = user_captcha.split(sign)
-        dict_sign = {'-': int(left_part) - int(right_part), '+': int(left_part) + int(right_part), '*': int(left_part) + int(right_part), '/': int(left_part) + int(right_part)}
-        digit = dict_sign[sign]
-        return user_captcha == captcha_string and str(digit) == captcha_math
-    except ValueError:
-        return False
-
-
-def restart_captcha():
-    """ Создание новой капчи """
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-    markup.add("/Загрузить_новую_капчу?")
-    return markup
 
 
 @dp.message_handler(commands='start')
@@ -140,10 +87,28 @@ async def process_name(message: types.Message, state: FSMContext):
     await message.reply("Добавьте свое фото", reply_markup=keyboard_submit_edit())
 
 
-@dp.message_handler(lambda message: not message.photo, state=Form.user_photo)
+@dp.message_handler(lambda message: message.photo, state=Form.user_photo)
 async def process_photo_invalid(message: types.Message):
     """ Если пользователь загружает не фото """
     return await message.reply("Фотография не найдена в сообщении =(\nЗагрузи свою фотку")
+
+
+@dp.message_handler(content_types=['document'], state=Form.user_photo)
+async def process_photo_invalid(message: types.Message):
+    """ Если пользователь загружает файл """
+    return await message.reply("Вы отправили файл. Попробуйте отправить фото, предварительно сжав его.")
+
+
+@dp.message_handler(content_types=['voice'], state=Form.user_photo)
+async def process_photo_invalid(message: types.Message):
+    """ Если пользователь загружает аудио """
+    return await message.reply("Вы отправили аудио. Попробуйте отправить фото, предварительно сжав его.")
+
+
+@dp.message_handler(content_types=['video_note', 'video'], state=Form.user_photo)
+async def process_photo_invalid(message: types.Message):
+    """ Если пользователь загружает видео """
+    return await message.reply("Вы отправили видео. Попробуйте отправить фото, предварительно сжав его.")
 
 
 @dp.message_handler(content_types=['photo'], state=Form.user_photo)
@@ -155,7 +120,6 @@ async def process_photo(message: types.Message, state: FSMContext):
         path = f'http://api.telegram.org/file/bot{API_TOKEN}/{file_info.file_path}'
         data['user_photo'] = [path, document_id]
     await Form.next()
-    # await bot.send_photo(chat_id=message.chat.id, photo=message.photo[-1].file_id)
     await message.reply("Сколько тебе лет?", reply_markup=keyboard_submit_edit())
 
 
@@ -168,12 +132,23 @@ async def process_age_invalid(message: types.Message):
 @dp.message_handler(lambda message: message.text.isdigit(), state=Form.age)
 async def process_age(message: types.Message, state: FSMContext):
     """ Выбор взраста пользователем """
-    await Form.next()
     if int(message.text) < 18:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
         markup.add('/Сброс')
         await message.reply("Вам должно быть больше 18 лет!\nУдалите бот, если вам меньше 18 лет, в противном случае нажмите 'Сброс'", reply_markup=markup)
+    elif int(message.text) >= 100:
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
+        markup.add('/Сброс')
+        await message.reply("Наверное вам не стоит искать себе пару, пощадите себя =(", reply_markup=markup)
+    elif 60 < int(message.text) < 100:
+        await Form.next()
+        await state.update_data(age=int(message.text))
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
+        markup.add("Мужчина", "Женщина")
+        markup.add('/Сброс')
+        await message.reply("А ты бодрый старикашка или старушка =) Какого Вы пола?", reply_markup=markup)
     else:
+        await Form.next()
         await state.update_data(age=int(message.text))
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
         markup.add("Мужчина", "Женщина")
