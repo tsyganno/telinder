@@ -1,5 +1,20 @@
+import math
+import requests
+import csv
 from multicolorcaptcha import CaptchaGenerator
 from aiogram import types
+from geopy.geocoders import Nominatim
+from transliterate import translit
+
+
+def create_list_of_cities():
+    dict_city = {}
+    with open('city.csv', 'r', encoding='utf-8') as file:
+        reader = csv.reader(file)
+        for el in reader:
+            city, lat, lon = el[9], el[20], el[21]
+            dict_city[city] = (lat, lon)
+    return dict_city
 
 
 def keyboard_submit_edit():
@@ -44,3 +59,27 @@ def restart_captcha():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
     markup.add("/Загрузить_новую_капчу?")
     return markup
+
+
+def search_geo(cities: dict, locality: str):
+    """ Поиск координат геолокации пользователя """
+    try:
+        for key in cities.keys():
+            if locality.lower() == key.lower():
+                latitude, longitude = cities[key][0], cities[key][1]
+                return latitude, longitude
+    except AttributeError:
+        return None
+
+
+def found_city_radius(latitude, longitude):
+    """Поиск всех локаций в радиусе от заданной локации"""
+
+    dist = int(50)  # дистанция 50 км
+    mylon = float(longitude)  # долгота
+    mylat = float(latitude)  # широта
+    lon1 = mylon - dist / abs(math.cos(math.radians(mylat)) * 111.0)  # 1 градус широты = 111 км
+    lon2 = mylon + dist / abs(math.cos(math.radians(mylat)) * 111.0)
+    lat1 = mylat - (dist / 111.0)
+    lat2 = mylat + (dist / 111.0)
+    return lon1, lon2, lat1, lat2

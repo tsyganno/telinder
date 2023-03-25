@@ -16,7 +16,7 @@ from aiogram.types.input_file import InputFile
 from db import Sql_lite
 from stack import Partner, StackCaptcha
 from state_machine import Form
-from functions import keyboard_submit_edit, generate_captcha, examination_captcha, restart_captcha
+from functions import keyboard_submit_edit, generate_captcha, examination_captcha, restart_captcha, search_geo, found_city_radius, create_list_of_cities
 
 load_dotenv()
 
@@ -33,6 +33,7 @@ db = Sql_lite()
 arr = Partner()
 arr_cap = StackCaptcha()
 counter = 0
+dict_city = create_list_of_cities()
 
 
 @dp.message_handler(commands='start')
@@ -63,11 +64,10 @@ async def process_name(message: types.Message):
 async def process_name(message: types.Message):
     """ Прохождение капчи """
     user_captcha = message.text
-    if examination_captcha(user_captcha, arr_cap.array_captcha[0], arr_cap.array_captcha[1]) is True:
+    if examination_captcha(user_captcha, arr_cap.array_captcha[-2], arr_cap.array_captcha[-1]) is True:
         await Form.next()
         await message.reply("Как тебя зовут?")
     else:
-        arr_cap.array_captcha = []
         await message.reply("Что-то пошло не так...\nПоробуйте снова или загрузите новую капчу.", reply_markup=restart_captcha())
 
 
@@ -84,7 +84,20 @@ async def process_name(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['name'] = message.text
     await Form.next()
-    await message.reply("Добавьте свое фото", reply_markup=keyboard_submit_edit())
+    await message.reply("Введите название своего населенного пункта", reply_markup=keyboard_submit_edit())
+
+
+@dp.message_handler(state=Form.locality)
+async def process_name(message: types.Message, state: FSMContext):
+    """ Населенный пункт пользователя процесса """
+    if search_geo(dict_city, message.text) is not None:
+        async with state.proxy() as data:
+            data['local_geo'] = search_geo(dict_city, message.text)
+            found_city_radius(data['local_geo'][0], data['local_geo'][1])
+        await Form.next()
+        await message.reply("Добавьте свое фото", reply_markup=keyboard_submit_edit())
+    else:
+        await message.reply("Введите корректное название населенного пункта", reply_markup=keyboard_submit_edit())
 
 
 @dp.message_handler(lambda message: message.photo, state=Form.user_photo)
@@ -183,6 +196,8 @@ async def process_gender(message: types.Message, state: FSMContext):
                 gender=data['gender'],
                 photo=data['user_photo'][0],
                 photo_for_chat=data['user_photo'][1],
+                latitude=data['local_geo'][0],
+                longitude=data['local_geo'][1],
             )
         else:
             db.write_to_the_database(
@@ -197,6 +212,8 @@ async def process_gender(message: types.Message, state: FSMContext):
                 gender=data['gender'],
                 photo=data['user_photo'][0],
                 photo_for_chat=data['user_photo'][1],
+                latitude=data['local_geo'][0],
+                longitude=data['local_geo'][1],
             )
         await bot.send_message(
             message.chat.id,
@@ -223,7 +240,9 @@ async def process_age(message: types.Message, state: FSMContext):
         markup.add("Начнем искать пару?")
         markup.add("/Сброс")
         try:
-            array_partners = db.search_for_a_potential_partner(data['gender'])
+            potential_partners = db.search_for_a_potential_partner(data['gender'])
+            lon1, lon2, lat1, lat2 = found_city_radius(data['local_geo'][0], data['local_geo'][1])
+            array_partners = list(filter(lambda x: lat1 < float(x[11]) < lat2 and lon1 < float(x[12]) < lon2, potential_partners))
             while True:
                 partner = choice(array_partners)
                 if partner not in arr.array:
@@ -261,7 +280,7 @@ async def process_age(message: types.Message, state: FSMContext):
                     await message.reply("Пары закончились. Обновите профиль (/Сброс) и начните искать по новому =)", reply_markup=markup)
                     break
         except:
-            pass
+            print('ошибка')
 
     # await state.finish()
 
