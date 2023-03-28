@@ -3,7 +3,6 @@ import requests
 import csv
 from multicolorcaptcha import CaptchaGenerator
 from aiogram import types
-from geopy.geocoders import Nominatim
 from transliterate import translit
 
 
