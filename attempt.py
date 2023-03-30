@@ -13,10 +13,10 @@ from aiogram.types import ParseMode
 from aiogram.utils import executor
 from aiogram.types.input_file import InputFile
 
-from db_sqlalchemy import write_to_the_database, finding_a_duplicate_entry_in_the_database, update_record_in_the_database, search_for_a_potential_partner
+from db_sqlalchemy import write_to_the_database, finding_a_duplicate_entry_in_the_database, update_record_in_the_database, search_for_a_potential_partner, count_of_records_in_the_table
 from stack import Partner, StackCaptcha
 from state_machine import Form
-from functions import keyboard_submit_edit, generate_captcha, examination_captcha, restart_captcha, search_geo, found_city_radius, create_list_of_cities
+from functions import keyboard_submit_edit, generate_captcha, examination_captcha, restart_captcha, search_geo, found_city_radius, create_list_of_cities, check_for_none
 
 load_dotenv()
 
@@ -31,7 +31,6 @@ dp = Dispatcher(bot, storage=storage)
 
 arr = Partner()
 arr_cap = StackCaptcha()
-counter = 0
 dict_city = create_list_of_cities()
 
 
@@ -82,6 +81,7 @@ async def process_name(message: types.Message, state: FSMContext):
     """ Имя пользователя процесса """
     async with state.proxy() as data:
         data['name'] = message.text
+    arr.zeroing()
     await Form.next()
     await message.reply("Введите название своего населенного пункта", reply_markup=keyboard_submit_edit())
 
@@ -182,14 +182,15 @@ async def process_gender(message: types.Message, state: FSMContext):
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
         markup.add("Начнем искать пару? Нажимай скорее =)")
         markup.add("/Сброс")
-        counter += 1
+        counter = count_of_records_in_the_table()
         if finding_a_duplicate_entry_in_the_database(message.from_user.id) is True:
+            username = check_for_none(message.from_user.username)
             update_record_in_the_database(
                 name_in_chat=data['name'],
                 id_user=message.from_user.id,
                 first_name=message.from_user.first_name,
                 last_name=message.from_user.last_name,
-                username=message.from_user.username,
+                username=username,
                 date=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
                 age=data['age'],
                 gender=data['gender'],
@@ -199,13 +200,14 @@ async def process_gender(message: types.Message, state: FSMContext):
                 longitude=data['local_geo'][1],
             )
         else:
+            username = check_for_none(message.from_user.username)
             write_to_the_database(
                 id=counter,
                 name_in_chat=data['name'],
                 id_user=message.from_user.id,
                 first_name=message.from_user.first_name,
                 last_name=message.from_user.last_name,
-                username=message.from_user.username,
+                username=username,
                 date=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
                 age=data['age'],
                 gender=data['gender'],
@@ -234,14 +236,11 @@ async def process_gender(message: types.Message, state: FSMContext):
 async def process_age(message: types.Message, state: FSMContext):
     """ Выбор партнера """
     async with state.proxy() as data:
-        # markup = types.ReplyKeyboardRemove()
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
         markup.add("Начнем искать пару?")
         markup.add("/Сброс")
         try:
             potential_partners = search_for_a_potential_partner(data['gender'])
-            print(potential_partners)
-            print(type(potential_partners))
             lon1, lon2, lat1, lat2 = found_city_radius(data['local_geo'][0], data['local_geo'][1])
             array_partners = list(filter(lambda x: lat1 < float(x.latitude) < lat2 and lon1 < float(x.longitude) < lon2, potential_partners))
             while True:
@@ -282,6 +281,7 @@ async def process_age(message: types.Message, state: FSMContext):
                     break
         except:
             print('ошибка')
+            await message.reply("Ошибка, трудно =(", reply_markup=markup)
 
 
 if __name__ == '__main__':

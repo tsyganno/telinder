@@ -67,7 +67,14 @@ def update_record_in_the_database(name_in_chat: str, id_user: int, first_name: s
     session.commit()
 
 
-def search_for_a_potential_partner(gender):
+def search_for_a_potential_partner(gen: str):
     """Поиск партнеров противоположного пола"""
-    records = session.query(User).filter(User.gender != gender).all()
+    records = session.query(User).filter(User.gender != gen).all()
+    print('Функция', records)
+    print(session.query(User).all())
     return records
+
+
+def count_of_records_in_the_table():
+    records = session.query(User).all()
+    return len(records) + 1

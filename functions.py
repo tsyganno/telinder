@@ -1,9 +1,7 @@
 import math
-import requests
 import csv
 from multicolorcaptcha import CaptchaGenerator
 from aiogram import types
-from transliterate import translit
 
 
 def create_list_of_cities():
@@ -82,3 +80,11 @@ def found_city_radius(latitude, longitude):
     lat1 = mylat - (dist / 111.0)
     lat2 = mylat + (dist / 111.0)
     return lon1, lon2, lat1, lat2
+
+
+def check_for_none(username):
+    if username is None:
+        result = None
+    else:
+        result = f'@{username}'
+    return result
