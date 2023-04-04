@@ -22,9 +22,10 @@ class User(Base):
     photo_for_chat = Column(String)
     latitude = Column(String)
     longitude = Column(String)
+    description_user = Column(String)
 
     def __init__(self, id, name_in_chat, id_user, first_name, last_name, username, date, age, gender, photo,
-                 photo_for_chat, latitude, longitude):
+                 photo_for_chat, latitude, longitude, description_user):
         self.id = id
         self.name_in_chat = name_in_chat
         self.id_user = id_user
@@ -38,43 +39,46 @@ class User(Base):
         self.photo_for_chat = photo_for_chat
         self.latitude = latitude
         self.longitude = longitude
+        self.description_user = description_user
 
     def __repr__(self):
         return "<User('%s','%s', '%s')>" % (self.username, self.first_name, self.last_name)
 
 
 Session = sessionmaker(bind=engine)
-session = Session()
 counter = 0
 
 
 def finding_a_duplicate_entry_in_the_database(user_id: int) -> bool:
     """Поиск повторяющейся записи в БД"""
+    session = Session()
     records = session.query(User).filter(User.id_user == user_id).all()
     return len(records) > 0
 
 
-def write_to_the_database(id: int, name_in_chat: str, id_user: int, first_name: str, last_name: str, username: str, date: str, age: int, gender: str, photo: str, photo_for_chat: str, latitude: str, longitude: str):
+def write_to_the_database(id: int, name_in_chat: str, id_user: int, first_name: str, last_name: str, username: str, date: str, age: int, gender: str, photo: str, photo_for_chat: str, latitude: str, longitude: str, description_user: str):
     """Добавление записи в БД"""
-    new_user = User(id, name_in_chat, id_user, first_name, last_name, username, date, age, gender, photo, photo_for_chat, latitude, longitude)
+    session = Session()
+    new_user = User(id, name_in_chat, id_user, first_name, last_name, username, date, age, gender, photo, photo_for_chat, latitude, longitude, description_user)
     session.add(new_user)
     session.commit()
 
 
-def update_record_in_the_database(name_in_chat: str, id_user: int, first_name: str, last_name: str, username: str, date: str, age: int, gender: str, photo: str, photo_for_chat: str, latitude: str, longitude: str):
+def update_record_in_the_database(name_in_chat: str, id_user: int, first_name: str, last_name: str, username: str, date: str, age: int, gender: str, photo: str, photo_for_chat: str, latitude: str, longitude: str, description_user: str):
     """Обновление записи пользователя """
-    session.query(User).filter(User.id_user == id_user).update({'name_in_chat': name_in_chat, 'first_name': first_name, 'last_name': last_name, 'username': username, 'date': date, 'age': age, 'gender': gender, 'photo': photo, 'photo_for_chat': photo_for_chat, 'latitude': latitude, 'longitude': longitude})
+    session = Session()
+    session.query(User).filter(User.id_user == id_user).update({'name_in_chat': name_in_chat, 'first_name': first_name, 'last_name': last_name, 'username': username, 'date': date, 'age': age, 'gender': gender, 'photo': photo, 'photo_for_chat': photo_for_chat, 'latitude': latitude, 'longitude': longitude, 'description_user': description_user})
     session.commit()
 
 
 def search_for_a_potential_partner(gen: str):
     """Поиск партнеров противоположного пола"""
+    session = Session()
     records = session.query(User).filter(User.gender != gen).all()
-    print('Функция', records)
-    print(session.query(User).all())
     return records
 
 
 def count_of_records_in_the_table():
+    session = Session()
     records = session.query(User).all()
     return len(records) + 1

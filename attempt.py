@@ -16,11 +16,12 @@ from aiogram.types.input_file import InputFile
 from db_sqlalchemy import write_to_the_database, finding_a_duplicate_entry_in_the_database, update_record_in_the_database, search_for_a_potential_partner, count_of_records_in_the_table
 from stack import Partner, StackCaptcha
 from state_machine import Form
-from functions import keyboard_submit_edit, generate_captcha, examination_captcha, restart_captcha, search_geo, found_city_radius, create_list_of_cities, check_for_none
+from functions import keyboard_submit_edit, generate_captcha, examination_captcha, restart_captcha, search_geo, found_city_radius, create_list_of_cities, check_for_none, keyboard_submit_search_partner, keyboard_submit_gender
 
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 API_TOKEN = getenv('BOT_TOKEN')
 
@@ -32,6 +33,8 @@ dp = Dispatcher(bot, storage=storage)
 arr = Partner()
 arr_cap = StackCaptcha()
 dict_city = create_list_of_cities()
+
+PRICE = types.LabeledPrice(label="Подписка на 1 месяц", amount=500*100)  # в копейках (руб)
 
 
 @dp.message_handler(commands='start')
@@ -64,19 +67,19 @@ async def process_name(message: types.Message):
     user_captcha = message.text
     if examination_captcha(user_captcha, arr_cap.array_captcha[-2], arr_cap.array_captcha[-1]) is True:
         await Form.next()
-        await message.reply("Как тебя зовут?")
+        await message.reply('Как тебя зовут?')
     else:
         await message.reply("Что-то пошло не так...\nПоробуйте снова или загрузите новую капчу.", reply_markup=restart_captcha())
 
 
-@dp.message_handler(state='*', commands=['Сброс'])
+@dp.message_handler(state='*', commands=['Обновить_профиль'])
 async def process_name(message: types.Message):
     """ Возврат в исходное состояние, в точку входа в разговор """
     await Form.name.set()
     await message.reply("Как тебя зовут?")
 
 
-@dp.message_handler(state=Form.name)
+@dp.message_handler(lambda message: message.text, state=Form.name)
 async def process_name(message: types.Message, state: FSMContext):
     """ Имя пользователя процесса """
     async with state.proxy() as data:
@@ -94,9 +97,56 @@ async def process_name(message: types.Message, state: FSMContext):
             data['local_geo'] = search_geo(dict_city, message.text)
             found_city_radius(data['local_geo'][0], data['local_geo'][1])
         await Form.next()
-        await message.reply("Добавьте свое фото", reply_markup=keyboard_submit_edit())
+        await message.reply("Сколько тебе лет?", reply_markup=keyboard_submit_edit())
     else:
         await message.reply("Введите корректное название населенного пункта", reply_markup=keyboard_submit_edit())
+
+
+@dp.message_handler(lambda message: not message.text.isdigit(), state=Form.age)
+async def process_age_invalid(message: types.Message):
+    """ Если возраст у пользователя неверный """
+    return await message.reply("Возраст должен быть числом.\nСколько тебе лет? (только цифры)")
+
+
+@dp.message_handler(lambda message: message.text.isdigit(), state=Form.age)
+async def process_age(message: types.Message, state: FSMContext):
+    """ Выбор возраста пользователем """
+    if int(message.text) < 18:
+        await message.reply("Вам должно быть больше 18 лет!\nУдалите бот, если вам меньше 18 лет, в противном случае нажмите 'Сброс'", reply_markup=keyboard_submit_edit())
+    elif int(message.text) >= 100:
+        await message.reply("Наверное вам не стоит искать себе пару, пощадите себя =(\nПопробуйте снова.", reply_markup=keyboard_submit_edit())
+    elif 60 < int(message.text) < 100:
+        await Form.next()
+        await state.update_data(age=int(message.text))
+        await message.reply("А ты бодрый старикашка или старушка =) Какого Вы пола?", reply_markup=keyboard_submit_gender())
+    else:
+        await Form.next()
+        await state.update_data(age=int(message.text))
+        await message.reply("Какого Вы пола?", reply_markup=keyboard_submit_gender())
+
+
+@dp.message_handler(lambda message: message.text not in ["Мужчина", "Женщина"], state=Form.gender)
+async def process_gender_invalid(message: types.Message):
+    """В этом примере пол должен быть одним из: Мужской или Женский """
+    return await message.reply("Плохое гендерное имя. Выберите свой пол с клавиатуры.")
+
+
+@dp.message_handler(lambda message: message.text, state=Form.gender)
+async def process_gender(message: types.Message, state: FSMContext):
+    """ Выбор пола пользователем """
+    async with state.proxy() as data:
+        data['gender'] = message.text
+    await Form.next()
+    await message.reply("Расскажите о себе.", reply_markup=keyboard_submit_edit())
+
+
+@dp.message_handler(lambda message: message.text, state=Form.description)
+async def process_gender(message: types.Message, state: FSMContext):
+    """ Описание пользователя """
+    async with state.proxy() as data:
+        data['description'] = message.text
+    await Form.next()
+    await message.reply("Добавьте свое фото.", reply_markup=keyboard_submit_edit())
 
 
 @dp.message_handler(lambda message: message.photo, state=Form.user_photo)
@@ -127,61 +177,14 @@ async def process_photo_invalid(message: types.Message):
 async def process_photo(message: types.Message, state: FSMContext):
     """ Фото пользователя процесса """
     async with state.proxy() as data:
+        global counter
         document_id = message.photo[-1].file_id
         file_info = await bot.get_file(document_id)
         path = f'http://api.telegram.org/file/bot{API_TOKEN}/{file_info.file_path}'
         data['user_photo'] = [path, document_id]
-    await Form.next()
-    await message.reply("Сколько тебе лет?", reply_markup=keyboard_submit_edit())
-
-
-@dp.message_handler(lambda message: not message.text.isdigit(), state=Form.age)
-async def process_age_invalid(message: types.Message):
-    """ Если возраст у пользователя неверный """
-    return await message.reply("Возраст должен быть числом.\nСколько тебе лет? (только цифры)")
-
-
-@dp.message_handler(lambda message: message.text.isdigit(), state=Form.age)
-async def process_age(message: types.Message, state: FSMContext):
-    """ Выбор взраста пользователем """
-    if int(message.text) < 18:
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-        markup.add('/Сброс')
-        await message.reply("Вам должно быть больше 18 лет!\nУдалите бот, если вам меньше 18 лет, в противном случае нажмите 'Сброс'", reply_markup=markup)
-    elif int(message.text) >= 100:
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-        markup.add('/Сброс')
-        await message.reply("Наверное вам не стоит искать себе пару, пощадите себя =(", reply_markup=markup)
-    elif 60 < int(message.text) < 100:
-        await Form.next()
-        await state.update_data(age=int(message.text))
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-        markup.add("Мужчина", "Женщина")
-        markup.add('/Сброс')
-        await message.reply("А ты бодрый старикашка или старушка =) Какого Вы пола?", reply_markup=markup)
-    else:
-        await Form.next()
-        await state.update_data(age=int(message.text))
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-        markup.add("Мужчина", "Женщина")
-        markup.add('/Сброс')
-        await message.reply("Какого Вы пола?", reply_markup=markup)
-
-
-@dp.message_handler(lambda message: message.text not in ["Мужчина", "Женщина"], state=Form.gender)
-async def process_gender_invalid(message: types.Message):
-    """В этом примере пол должен быть одним из: Мужской или Женский """
-    return await message.reply("Плохое гендерное имя. Выберите свой пол с клавиатуры.")
-
-
-@dp.message_handler(state=Form.gender)
-async def process_gender(message: types.Message, state: FSMContext):
-    async with state.proxy() as data:
-        global counter
-        data['gender'] = message.text
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
         markup.add("Начнем искать пару? Нажимай скорее =)")
-        markup.add("/Сброс")
+        markup.add("/Обновить_профиль")
         counter = count_of_records_in_the_table()
         if finding_a_duplicate_entry_in_the_database(message.from_user.id) is True:
             username = check_for_none(message.from_user.username)
@@ -198,6 +201,7 @@ async def process_gender(message: types.Message, state: FSMContext):
                 photo_for_chat=data['user_photo'][1],
                 latitude=data['local_geo'][0],
                 longitude=data['local_geo'][1],
+                description_user=data['description'],
             )
         else:
             username = check_for_none(message.from_user.username)
@@ -215,6 +219,7 @@ async def process_gender(message: types.Message, state: FSMContext):
                 photo_for_chat=data['user_photo'][1],
                 latitude=data['local_geo'][0],
                 longitude=data['local_geo'][1],
+                description_user=data['description'],
             )
         await bot.send_message(
             message.chat.id,
@@ -236,15 +241,15 @@ async def process_gender(message: types.Message, state: FSMContext):
 async def process_age(message: types.Message, state: FSMContext):
     """ Выбор партнера """
     async with state.proxy() as data:
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-        markup.add("Начнем искать пару?")
-        markup.add("/Сброс")
         try:
             potential_partners = search_for_a_potential_partner(data['gender'])
+            # logger.info(f'ПАРТНЕРЫ !!! {potential_partners}')
             lon1, lon2, lat1, lat2 = found_city_radius(data['local_geo'][0], data['local_geo'][1])
             array_partners = list(filter(lambda x: lat1 < float(x.latitude) < lat2 and lon1 < float(x.longitude) < lon2, potential_partners))
             while True:
                 partner = choice(array_partners)
+                logger.info(f'ЭРР ЭРРЭЙ {arr.array}')
+                logger.info(f'partner {partner}')
                 if partner not in arr.array:
                     if partner.username is None:
                         await bot.send_message(
@@ -255,7 +260,7 @@ async def process_age(message: types.Message, state: FSMContext):
                                 md.text(f'Username для поиска в Telegram: не существует'),
                                 sep='\n',
                             ),
-                            reply_markup=markup,
+                            reply_markup=keyboard_submit_search_partner(),
                             parse_mode=ParseMode.MARKDOWN,
                         )
                         await bot.send_photo(chat_id=message.chat.id, photo=partner.photo_for_chat)
@@ -268,20 +273,22 @@ async def process_age(message: types.Message, state: FSMContext):
                                 md.text(f'Зовут: {partner.name_in_chat}'),
                                 md.text(f'Возраст: {partner.age}'),
                                 md.text(f'Username для поиска в Telegram: {partner.username}'),
+                                md.text(f'Описание: {partner.description_user}'),
                                 sep='\n',
                             ),
-                            reply_markup=markup,
+                            reply_markup=keyboard_submit_search_partner(),
                             parse_mode=ParseMode.MARKDOWN,
                         )
+                        # logger.info(f'PHOTO {partner.photo_for_chat}')
                         await bot.send_photo(chat_id=message.chat.id, photo=partner.photo_for_chat)
                         arr.array.append(partner)
                         break
                 else:
-                    await message.reply("Пары закончились. Обновите профиль (/Сброс) и начните искать по новому =)", reply_markup=markup)
+                    await message.reply("Пары закончились. Обновите профиль (/Обновить_профиль) и начните искать по новому =)", reply_markup=keyboard_submit_edit())
                     break
         except:
-            print('ошибка')
-            await message.reply("Ошибка, трудно =(", reply_markup=markup)
+            # logger.exception('Ошибка!!!')
+            await message.reply("Ошибка, трудно =(", reply_markup=keyboard_submit_search_partner())
 
 
 if __name__ == '__main__':

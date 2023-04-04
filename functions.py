@@ -15,9 +15,25 @@ def create_list_of_cities():
 
 
 def keyboard_submit_edit():
-    """ Создание кнопки Сброса """
+    """ Создание кнопки 'Обновить профиль' """
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-    markup.add("/Сброс")
+    markup.add("/Обновить_профиль")
+    return markup
+
+
+def keyboard_submit_search_partner():
+    """ Создание кнопки 'Обновить профиль' и 'Начнем искать пару?' """
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
+    markup.add("Начнем искать пару?")
+    markup.add("/Обновить_профиль")
+    return markup
+
+
+def keyboard_submit_gender():
+    """ Создание кнопки 'Обновить профиль' и 'выбор пола' """
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
+    markup.add("Мужчина", "Женщина")
+    markup.add('/Обновить_профиль')
     return markup
 
 
