@@ -15,11 +15,11 @@ from aiogram.types.input_file import InputFile
 
 from db_sqlalchemy import write_to_the_database, finding_a_duplicate_entry_in_the_database, \
     update_record_in_the_database, search_for_a_potential_partner, count_of_records_in_the_table, \
-    update_stack_of_partners_in_record, extraction_stack_of_partners_from_record, zeroing_stack_of_partners_in_record
+    update_stack_of_partners_in_record, extraction_stack_of_partners_from_record, zeroing_stack_of_partners_in_record, delete_record
 from stack import StackCaptcha
 from state_machine import Form
 from functions import keyboard_submit_edit, generate_captcha, examination_captcha, restart_captcha, search_geo, \
-    found_city_radius, create_list_of_cities, check_for_none, keyboard_submit_search_partner, keyboard_submit_gender
+    found_city_radius, create_list_of_cities, check_for_none, keyboard_submit_search_partner, keyboard_submit_gender, keyboard_submit_edit_delete
 
 load_dotenv()
 
@@ -81,6 +81,14 @@ async def process_name(message: types.Message):
     await message.reply("Как тебя зовут?")
 
 
+@dp.message_handler(state='*', commands=['Удалить_профиль'])
+async def process_name(message: types.Message):
+    """ Возврат в исходное состояние, в точку входа в разговор, удаление профиля из бд"""
+    delete_record(message.from_user.id)
+    await Form.name.set()
+    await message.reply("Вы удалили свой профиль из базы данных, теперь никто вас не найдет...\nЧтобы снова начать искать свою любовь, заполните свой профиль.\n Как тебя зовут?", reply_markup=keyboard_submit_edit())
+
+
 @dp.message_handler(lambda message: message.text, state=Form.name)
 async def process_name(message: types.Message, state: FSMContext):
     """ Имя пользователя процесса """
@@ -114,7 +122,7 @@ async def process_age_invalid(message: types.Message):
 async def process_age(message: types.Message, state: FSMContext):
     """ Выбор возраста пользователем """
     if int(message.text) < 18:
-        await message.reply("Вам должно быть больше 18 лет!\nУдалите бот, если вам меньше 18 лет, в противном случае нажмите 'Сброс'", reply_markup=keyboard_submit_edit())
+        await message.reply("Вам должно быть больше 18 лет!\nУдалите бот, если вам меньше 18 лет, в противном случае нажмите 'Обновить_профиль'", reply_markup=keyboard_submit_edit())
     elif int(message.text) >= 100:
         await message.reply("Наверное вам не стоит искать себе пару, пощадите себя =(\nПопробуйте снова.", reply_markup=keyboard_submit_edit())
     elif 60 < int(message.text) < 100:
@@ -288,7 +296,7 @@ async def process_age(message: types.Message, state: FSMContext):
                         update_stack_of_partners_in_record(message.from_user.id, str(partner.id_user) + ' ')
                         break
                 else:
-                    await message.reply("Пары закончились. Обновите профиль (/Обновить_профиль) и начните искать по новому =)", reply_markup=keyboard_submit_edit())
+                    await message.reply("Пары закончились. Обновите профиль (/Обновить_профиль) и начните искать по новому =)\nТакже вы можете удалить свой профиль (/Удалить_профиль)", reply_markup=keyboard_submit_edit_delete())
                     break
         except:
             # logger.exception('Ошибка!!!')

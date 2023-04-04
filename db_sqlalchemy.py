@@ -1,5 +1,5 @@
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, create_engine, update
+from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.orm import sessionmaker
 
 Base = declarative_base()
@@ -97,6 +97,13 @@ def extraction_stack_of_partners_from_record(id_user: int):
     else:
         array = records[0].stack_of_partners.split()
         return array
+
+
+def delete_record(id_user: int):
+    session = Session()
+    obj = session.query(User).filter(User.id_user == id_user).one()
+    session.delete(obj)
+    session.commit()
 
 
 def search_for_a_potential_partner(gen: str):

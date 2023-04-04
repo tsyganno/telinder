@@ -26,6 +26,15 @@ def keyboard_submit_search_partner():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
     markup.add("Начнем искать пару?")
     markup.add("/Обновить_профиль")
+    markup.add("/Удалить_профиль")
+    return markup
+
+
+def keyboard_submit_edit_delete():
+    """ Создание кнопки 'Обновить профиль' и 'Удалить профиль' """
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
+    markup.add("/Обновить_профиль")
+    markup.add("/Удалить_профиль")
     return markup
 
 
