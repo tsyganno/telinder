@@ -13,10 +13,13 @@ from aiogram.types import ParseMode
 from aiogram.utils import executor
 from aiogram.types.input_file import InputFile
 
-from db_sqlalchemy import write_to_the_database, finding_a_duplicate_entry_in_the_database, update_record_in_the_database, search_for_a_potential_partner, count_of_records_in_the_table
-from stack import Partner, StackCaptcha
+from db_sqlalchemy import write_to_the_database, finding_a_duplicate_entry_in_the_database, \
+    update_record_in_the_database, search_for_a_potential_partner, count_of_records_in_the_table, \
+    update_stack_of_partners_in_record, extraction_stack_of_partners_from_record, zeroing_stack_of_partners_in_record
+from stack import StackCaptcha
 from state_machine import Form
-from functions import keyboard_submit_edit, generate_captcha, examination_captcha, restart_captcha, search_geo, found_city_radius, create_list_of_cities, check_for_none, keyboard_submit_search_partner, keyboard_submit_gender
+from functions import keyboard_submit_edit, generate_captcha, examination_captcha, restart_captcha, search_geo, \
+    found_city_radius, create_list_of_cities, check_for_none, keyboard_submit_search_partner, keyboard_submit_gender
 
 load_dotenv()
 
@@ -30,7 +33,6 @@ bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
-arr = Partner()
 arr_cap = StackCaptcha()
 dict_city = create_list_of_cities()
 
@@ -84,7 +86,7 @@ async def process_name(message: types.Message, state: FSMContext):
     """ Имя пользователя процесса """
     async with state.proxy() as data:
         data['name'] = message.text
-    arr.zeroing()
+    zeroing_stack_of_partners_in_record(message.from_user.id)
     await Form.next()
     await message.reply("Введите название своего населенного пункта", reply_markup=keyboard_submit_edit())
 
@@ -202,6 +204,7 @@ async def process_photo(message: types.Message, state: FSMContext):
                 latitude=data['local_geo'][0],
                 longitude=data['local_geo'][1],
                 description_user=data['description'],
+                stack_of_partners='',
             )
         else:
             username = check_for_none(message.from_user.username)
@@ -220,6 +223,7 @@ async def process_photo(message: types.Message, state: FSMContext):
                 latitude=data['local_geo'][0],
                 longitude=data['local_geo'][1],
                 description_user=data['description'],
+                stack_of_partners='',
             )
         await bot.send_message(
             message.chat.id,
@@ -243,14 +247,15 @@ async def process_age(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         try:
             potential_partners = search_for_a_potential_partner(data['gender'])
-            # logger.info(f'ПАРТНЕРЫ !!! {potential_partners}')
+            logger.info(f'ПАРТНЕРЫ !!! {potential_partners}')
             lon1, lon2, lat1, lat2 = found_city_radius(data['local_geo'][0], data['local_geo'][1])
             array_partners = list(filter(lambda x: lat1 < float(x.latitude) < lat2 and lon1 < float(x.longitude) < lon2, potential_partners))
             while True:
                 partner = choice(array_partners)
-                logger.info(f'ЭРР ЭРРЭЙ {arr.array}')
-                logger.info(f'partner {partner}')
-                if partner not in arr.array:
+                array = extraction_stack_of_partners_from_record(message.from_user.id)
+                # logger.info(f'ПАРТНЕРЫ STACK {partner.id_user}')
+                # logger.info(f'STACK {array}')
+                if str(partner.id_user) not in array:
                     if partner.username is None:
                         await bot.send_message(
                             message.chat.id,
@@ -264,7 +269,7 @@ async def process_age(message: types.Message, state: FSMContext):
                             parse_mode=ParseMode.MARKDOWN,
                         )
                         await bot.send_photo(chat_id=message.chat.id, photo=partner.photo_for_chat)
-                        arr.array.append(partner)
+                        update_stack_of_partners_in_record(message.from_user.id, str(partner.id_user) + ' ')
                         break
                     else:
                         await bot.send_message(
@@ -279,9 +284,8 @@ async def process_age(message: types.Message, state: FSMContext):
                             reply_markup=keyboard_submit_search_partner(),
                             parse_mode=ParseMode.MARKDOWN,
                         )
-                        # logger.info(f'PHOTO {partner.photo_for_chat}')
                         await bot.send_photo(chat_id=message.chat.id, photo=partner.photo_for_chat)
-                        arr.array.append(partner)
+                        update_stack_of_partners_in_record(message.from_user.id, str(partner.id_user) + ' ')
                         break
                 else:
                     await message.reply("Пары закончились. Обновите профиль (/Обновить_профиль) и начните искать по новому =)", reply_markup=keyboard_submit_edit())
