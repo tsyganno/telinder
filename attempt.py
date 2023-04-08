@@ -36,8 +36,6 @@ dp = Dispatcher(bot, storage=storage)
 arr_cap = StackCaptcha()
 dict_city = create_list_of_cities()
 
-PRICE = types.LabeledPrice(label="Подписка на 1 месяц", amount=500*100)  # в копейках (руб)
-
 
 @dp.message_handler(commands='start')
 async def cmd_start(message: types.Message):
@@ -75,7 +73,7 @@ async def process_name(message: types.Message):
 
 
 @dp.message_handler(state='*', commands=['Обновить_профиль'])
-async def process_name(message: types.Message):
+async def process_name(message: types.Message, state: FSMContext):
     """ Возврат в исходное состояние, в точку входа в разговор """
     await Form.name.set()
     await message.reply("Как тебя зовут?")
@@ -94,9 +92,12 @@ async def process_name(message: types.Message, state: FSMContext):
     """ Имя пользователя процесса """
     async with state.proxy() as data:
         data['name'] = message.text
+        print(data)
     zeroing_stack_of_partners_in_record(message.from_user.id)
+    print(data)
     await Form.next()
-    await message.reply("Введите название своего населенного пункта", reply_markup=keyboard_submit_edit())
+    print(data)
+    await message.reply("Введите название своего города", reply_markup=keyboard_submit_edit())
 
 
 @dp.message_handler(state=Form.locality)
@@ -109,7 +110,7 @@ async def process_name(message: types.Message, state: FSMContext):
         await Form.next()
         await message.reply("Сколько тебе лет?", reply_markup=keyboard_submit_edit())
     else:
-        await message.reply("Введите корректное название населенного пункта", reply_markup=keyboard_submit_edit())
+        await message.reply("Введите корректное название города", reply_markup=keyboard_submit_edit())
 
 
 @dp.message_handler(lambda message: not message.text.isdigit(), state=Form.age)
